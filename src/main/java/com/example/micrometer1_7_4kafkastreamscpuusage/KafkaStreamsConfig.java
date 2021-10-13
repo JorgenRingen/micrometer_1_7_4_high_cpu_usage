@@ -1,7 +1,10 @@
 package com.example.micrometer1_7_4kafkastreamscpuusage;
 
+import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaStreamsMetrics;
+import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.core.instrument.config.MeterFilterReply;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.Serdes;
@@ -65,6 +68,62 @@ public class KafkaStreamsConfig {
                 streamsBuilderFactoryBean.setKafkaStreamsCustomizer(
                         kafkaStreams -> new KafkaStreamsMetrics(kafkaStreams).bindTo(meterRegistry)
                 );
+    }
+
+    @Bean
+    public MeterFilter kafkaMetricsFilter() {
+        return new MeterFilter() {
+
+            /**
+             * Based on the most critical metrics mentioned in "Kafka: The Definitive Guide" (https://www.confluent.io/resources/kafka-the-definitive-guide/)
+             */
+            @Override
+            public MeterFilterReply accept(Meter.Id id) {
+                String name = id.getName();
+                if (name.startsWith("kafka")) {
+
+                    // time taken for a fetch request (OBS: includes fetch.min.bytes and fetch.max.wait.ms)
+                    // if high it indicates network/broker problems
+                    if (name.contains("fetch.latency")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // time taken from KafkaProducer.send() until response from broker
+                    // if high it indicates network/broker problems
+                    if (name.contains("request.latency")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // time taken for a commit request
+                    if (name.contains("commit.latency")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // errors from KafkaProducer.send() after max number of retries
+                    // should always be zero - if not messages are dropped
+                    if (name.contains("record.error")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // lag reported by the consumer for the partition that most behind
+                    // offset-lag should ideally be monitored through the consumer-group
+                    if (name.contains("records.lag")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // fraction of time I/O threads spent waiting (disk, network, etc)
+                    if (name.contains("io-wait")) {
+                        return MeterFilterReply.ACCEPT;
+                    }
+
+                    // ignore all other kafka-related metrics
+                    return MeterFilterReply.DENY;
+                }
+
+                // neutral = other filters can accept/deny
+                return MeterFilterReply.NEUTRAL;
+            }
+        };
     }
 
     @Bean
