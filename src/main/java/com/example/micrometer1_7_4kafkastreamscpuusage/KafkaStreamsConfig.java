@@ -112,7 +112,7 @@ public class KafkaStreamsConfig {
                     }
 
                     // fraction of time I/O threads spent waiting (disk, network, etc)
-                    if (name.contains("io-wait")) {
+                    if (name.contains("io.wait")) {
                         return MeterFilterReply.ACCEPT;
                     }
 
